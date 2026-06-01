@@ -5,7 +5,6 @@ if (typeof global !== "undefined") {
 }
 
 import { NextRequest, NextResponse } from "next/server";
-import { PDFParse } from "pdf-parse";
 import path from "path";
 import { pathToFileURL } from "url";
 
@@ -55,6 +54,10 @@ function chunkText(pages: Array<{ num: number; text: string }>, chunkSize = 1000
 
 export async function POST(request: NextRequest) {
     try {
+        // Dynamically import pdf-parse to prevent ES6 import hoisting from
+        // evaluating pdfjs-dist before our global DOMMatrix polyfills are set up!
+        const { PDFParse } = await import("pdf-parse");
+
         const formData = await request.formData();
         const file = formData.get("file") as File | null;
         
