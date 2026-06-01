@@ -637,20 +637,8 @@ export default function DocumentChatTerminal() {
         },
       ]);
 
-      // Automatically batch-generate embeddings for chunks if API key is present
-      if (apiKey.trim()) {
-        await generateVectorsForChunks(loadedChunks, apiKey);
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `sys-key-missing-${Date.now()}`,
-            role: "system",
-            content: `💡 **API Key Required for Semantic Search:** Please add and save your Google Gemini API Key in the settings panel, then click **"Create Index"** to generate vector embeddings. Otherwise, queries will default to **Sparse (Keywords)** mode.`,
-            timestamp: new Date(),
-          },
-        ]);
-      }
+      // Automatically batch-generate embeddings for chunks
+      await generateVectorsForChunks(loadedChunks, apiKey);
 
     } catch (err: any) {
       setUploadError(err.message || "An unexpected error occurred during ingestion.");
@@ -687,10 +675,7 @@ export default function DocumentChatTerminal() {
     const textToSend = customText || inputPrompt;
     if (!textToSend.trim()) return;
 
-    if (!apiKey.trim()) {
-      alert("Please enter and save your Gemini API Key first in the Sidebar panel.");
-      return;
-    }
+
 
     // Capture user message
     const userMessage: Message = {
