@@ -138,6 +138,26 @@ export default function DocumentChatTerminal() {
   const [savedChats, setSavedChats] = useState<DBChat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
 
+  // Premium UI Feedback: Custom Toast & Styled Confirm Dialog
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    show: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
+
+  const triggerToast = (message: string, type: "success" | "error" | "info" = "info") => {
+    setToast({ message, type });
+  };
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
   // Dynamic selector for standard single-document widgets backwards compatibility
   const financialReport = reportsCollection[selectedPeriod] || null;
 
@@ -268,9 +288,10 @@ export default function DocumentChatTerminal() {
       let u: DBUser;
       if (authMode === "signup") {
         u = await dbOrchestrator.signUp(authEmail, authPassword);
-        alert("Account registered successfully! Welcome to your secure database sandbox.");
+        triggerToast("Account registered successfully! Welcome to your database sandbox.", "success");
       } else {
         u = await dbOrchestrator.signIn(authEmail, authPassword);
+        triggerToast("Analyst session unlocked successfully.", "success");
       }
       
       setCurrentUser(u);
@@ -284,7 +305,9 @@ export default function DocumentChatTerminal() {
       setAuthEmail("");
       setAuthPassword("");
     } catch (err: any) {
-      setAuthError(err.message || "Authentication process failed.");
+      const errMsg = err.message || "Authentication process failed.";
+      setAuthError(errMsg);
+      triggerToast(errMsg, "error");
     } finally {
       setAuthLoading(false);
     }
@@ -312,9 +335,9 @@ export default function DocumentChatTerminal() {
         localStorage.removeItem("llm_active_user_id");
         localStorage.removeItem("llm_active_user_email");
       }
-      alert("Signed out successfully.");
+      triggerToast("Analyst session signed out successfully.", "success");
     } catch (err: any) {
-      alert("Error signing out: " + err.message);
+      triggerToast("Error signing out: " + err.message, "error");
     }
   };
 
@@ -364,22 +387,29 @@ export default function DocumentChatTerminal() {
         }
       }
     } catch (err: any) {
-      alert("Failed loading historical session messages: " + err.message);
+      triggerToast("Failed loading session messages: " + err.message, "error");
     }
   };
 
   const handleDeleteChat = async (e: React.MouseEvent, chatId: string) => {
     e.stopPropagation();
-    if (!confirm("Are you sure you want to permanently delete this research chat session?")) return;
-    try {
-      await dbOrchestrator.deleteChat(chatId);
-      setSavedChats(prev => prev.filter(c => c.id !== chatId));
-      if (activeChatId === chatId) {
-        handleStartNewChat();
+    setConfirmDialog({
+      show: true,
+      title: "Confirm Session Deletion",
+      message: "Are you sure you want to permanently delete this research chat session? This action cannot be undone.",
+      onConfirm: async () => {
+        try {
+          await dbOrchestrator.deleteChat(chatId);
+          setSavedChats(prev => prev.filter(c => c.id !== chatId));
+          if (activeChatId === chatId) {
+            handleStartNewChat();
+          }
+          triggerToast("Research session deleted successfully.", "success");
+        } catch (err: any) {
+          triggerToast("Failed to delete chat: " + err.message, "error");
+        }
       }
-    } catch (err: any) {
-      alert("Failed to delete chat: " + err.message);
-    }
+    });
   };
 
   // --- Load Saved Credentials on Mount ---
@@ -399,10 +429,10 @@ export default function DocumentChatTerminal() {
   const saveKey = () => {
     if (apiKey.trim()) {
       localStorage.setItem("llm_explorer_key_gemini", apiKey.trim());
-      alert("API Key saved securely in your local browser storage.");
+      triggerToast("Gemini API Key saved securely in browser storage.", "success");
     } else {
       localStorage.removeItem("llm_explorer_key_gemini");
-      alert("Key cleared.");
+      triggerToast("Gemini API Key cleared successfully.", "info");
     }
   };
 
@@ -420,7 +450,7 @@ export default function DocumentChatTerminal() {
       setActiveCitationText(concatenatedText);
       setActiveCitationLabel(label);
     } else {
-      alert(`No parsed text chunks found for Page ${pageNumber} in browser memory.`);
+      triggerToast(`No parsed text chunks found for Page ${pageNumber} in memory.`, "error");
     }
   };
 
@@ -1023,9 +1053,14 @@ export default function DocumentChatTerminal() {
                   </div>
                   <button
                     onClick={handleSignOut}
-                    className="w-full bg-white/5 hover:bg-rose-500/10 border border-white/8 hover:border-rose-500/20 text-gray-300 hover:text-rose-400 font-bold py-1.5 px-3 rounded-lg text-[10px] transition duration-200"
+                    className="w-full bg-white/5 hover:bg-rose-500/10 border border-white/8 hover:border-rose-500/20 active:scale-[0.98] text-gray-300 hover:text-rose-400 font-bold py-1.5 px-3 rounded-lg text-[10px] transition duration-200 uppercase tracking-wider flex items-center justify-center gap-1.5"
                   >
-                    Sign Out Analyst Session
+                    <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                      <polyline points="16 17 21 12 16 7" />
+                      <line x1="21" y1="12" x2="9" y2="12" />
+                    </svg>
+                    <span>Sign Out Analyst Session</span>
                   </button>
                 </div>
               ) : (
@@ -1038,9 +1073,13 @@ export default function DocumentChatTerminal() {
                       setAuthMode("signin");
                       setShowAuthModal(true);
                     }}
-                    className="w-full bg-indigo hover:bg-indigo/90 text-white font-bold py-1.5 px-3 rounded-lg text-xs transition duration-200"
+                    className="w-full bg-indigo hover:bg-indigo/90 hover:shadow-[0_0_12px_rgba(99,102,241,0.4)] active:scale-[0.98] text-white font-bold py-2 px-3 rounded-lg text-xs transition duration-200 uppercase tracking-wider flex items-center justify-center gap-1.5"
                   >
-                    Analyst Authentication
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                    <span>Analyst Authentication</span>
                   </button>
                 </div>
               )}
@@ -2308,7 +2347,7 @@ export default function DocumentChatTerminal() {
           ======================================================== */}
       {showAuthModal && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center z-50 animate-in fade-in duration-200 font-sans">
-          <div className="bg-[#0b0f19] border border-white/8 rounded-2xl p-6 w-[360px] max-w-full space-y-5 shadow-2xl relative">
+          <div className="bg-[#0b0f19] border border-white/8 rounded-2xl p-6 w-[360px] max-w-full space-y-5 shadow-2xl relative animate-in zoom-in-95 duration-200">
             
             {/* Close Button */}
             <button
@@ -2318,7 +2357,7 @@ export default function DocumentChatTerminal() {
                 setAuthPassword("");
                 setAuthError(null);
               }}
-              className="absolute right-4 top-4 text-gray-400 hover:text-white text-xs font-bold"
+              className="absolute right-4 top-4 text-gray-400 hover:text-white text-xs font-bold transition duration-150"
             >
               ✕
             </button>
@@ -2358,7 +2397,7 @@ export default function DocumentChatTerminal() {
               </div>
               
               {authError && (
-                <div className="text-[10px] font-semibold text-rose-400 bg-rose-950/20 border border-rose-900/30 rounded-lg p-2.5 leading-relaxed">
+                <div className="text-[10px] font-semibold text-rose-400 bg-rose-950/20 border border-rose-900/30 rounded-lg p-2.5 leading-relaxed animate-in fade-in duration-200">
                   {authError}
                 </div>
               )}
@@ -2366,9 +2405,21 @@ export default function DocumentChatTerminal() {
               <button
                 type="submit"
                 disabled={authLoading}
-                className="w-full bg-indigo hover:bg-indigo/90 disabled:opacity-50 text-white font-bold py-2 rounded-lg text-xs transition duration-200 uppercase tracking-wider"
+                className="w-full bg-indigo hover:bg-indigo/90 hover:shadow-[0_0_12px_rgba(99,102,241,0.4)] active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none text-white font-bold py-2.5 rounded-lg text-xs transition duration-200 uppercase tracking-wider flex items-center justify-center gap-2"
               >
-                {authLoading ? "Verifying..." : authMode === "signin" ? "Unlock Terminal" : "Register Terminal Account"}
+                {authLoading ? (
+                  <>
+                    <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span>Verifying Credentials...</span>
+                  </>
+                ) : authMode === "signin" ? (
+                  "Unlock Terminal"
+                ) : (
+                  "Register Terminal Account"
+                )}
               </button>
             </form>
             
@@ -2384,6 +2435,70 @@ export default function DocumentChatTerminal() {
               </button>
             </div>
             
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          GLOBAL SLIDING TOAST NOTIFICATIONS (FLEET SYSTEM FEEDBACK)
+          ======================================================== */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-[100] flex items-center gap-3 bg-[#0a0f1d]/95 backdrop-blur-md border border-white/10 rounded-xl px-4 py-3.5 shadow-[0_12px_40px_rgba(0,0,0,0.65)] animate-in slide-in-from-bottom-5 duration-300">
+          <div className={`w-2.5 h-2.5 rounded-full ${
+            toast.type === "success" ? "bg-emerald-500 animate-pulse shadow-[0_0_8px_#10b981]" :
+            toast.type === "error" ? "bg-rose-500 animate-pulse shadow-[0_0_8px_#f43f5e]" :
+            "bg-indigo animate-pulse shadow-[0_0_8px_#6366f1]"
+          }`} />
+          <div className="flex flex-col pr-8 font-sans">
+            <span className="text-[9px] uppercase font-black tracking-wider text-gray-500">
+              {toast.type === "success" ? "Terminal Access Valid" :
+               toast.type === "error" ? "Terminal Access Alert" :
+               "Terminal Notification"}
+            </span>
+            <p className="text-xs font-semibold text-white mt-0.5 leading-relaxed max-w-[280px]">
+              {toast.message}
+            </p>
+          </div>
+          <button
+            onClick={() => setToast(null)}
+            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white transition duration-150 text-[11px] font-bold"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* ========================================================
+          PREMIUM CUSTOM CONFIRMATION DIALOG (BLOOMBERG DIALOG blueprint)
+          ======================================================== */}
+      {confirmDialog && confirmDialog.show && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center z-[100] animate-in fade-in duration-200 font-sans">
+          <div className="bg-[#0b0f19] border border-white/8 rounded-2xl p-6 w-[340px] max-w-full space-y-5 shadow-2xl relative animate-in zoom-in-95 duration-200">
+            <div className="text-center space-y-1.5">
+              <h3 className="text-sm font-black uppercase tracking-wider text-rose-400">
+                {confirmDialog.title}
+              </h3>
+              <p className="text-xs text-gray-400 leading-relaxed font-semibold mt-2.5">
+                {confirmDialog.message}
+              </p>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setConfirmDialog(null)}
+                className="flex-1 bg-white/5 hover:bg-white/10 border border-white/8 text-white font-bold py-2 rounded-lg text-xs transition duration-200 uppercase tracking-wider active:scale-[0.98]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  confirmDialog.onConfirm();
+                  setConfirmDialog(null);
+                }}
+                className="flex-1 bg-rose-500 hover:bg-rose-600 text-white font-bold py-2 rounded-lg text-xs transition duration-200 uppercase tracking-wider active:scale-[0.98] shadow-lg shadow-rose-900/20"
+              >
+                Confirm
+              </button>
+            </div>
           </div>
         </div>
       )}
