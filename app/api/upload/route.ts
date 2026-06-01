@@ -62,10 +62,16 @@ export async function POST(request: NextRequest) {
         const arrayBuffer = await file.arrayBuffer();
         
         // Explicitly set the PDFJS worker path using file:// protocol to bypass
-        // Next.js Server Chunks folder resolution bugs under dev server/Turbopack
-        const workerPath = path.resolve("node_modules/pdf-parse/dist/pdf-parse/esm/pdf.worker.mjs");
-        const workerUrl = pathToFileURL(workerPath).href;
-        PDFParse.setWorker(workerUrl);
+        // Next.js Server Chunks folder resolution bugs under dev server/Turbopack in development mode.
+        if (process.env.NODE_ENV === "development") {
+            try {
+                const workerPath = path.resolve("node_modules/pdf-parse/dist/pdf-parse/esm/pdf.worker.mjs");
+                const workerUrl = pathToFileURL(workerPath).href;
+                PDFParse.setWorker(workerUrl);
+            } catch (workerErr) {
+                console.warn("⚠️ Failed to set explicit PDF worker in dev mode (falling back to native):", workerErr);
+            }
+        }
         
         // Extract text from buffer using pdf-parse class (v2.4.5+)
         const parser = new PDFParse({ data: arrayBuffer });
