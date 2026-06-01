@@ -1,3 +1,9 @@
+if (typeof global !== "undefined") {
+    if (!(global as any).DOMMatrix) {
+        (global as any).DOMMatrix = class DOMMatrix {};
+    }
+}
+
 import { NextRequest, NextResponse } from "next/server";
 import { PDFParse } from "pdf-parse";
 import path from "path";
