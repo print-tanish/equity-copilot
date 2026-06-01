@@ -1,12 +1,4 @@
-if (typeof global !== "undefined") {
-    if (!(global as any).DOMMatrix) {
-        (global as any).DOMMatrix = class DOMMatrix {};
-    }
-}
-
 import { NextRequest, NextResponse } from "next/server";
-import path from "path";
-import { pathToFileURL } from "url";
 
 interface Chunk {
     id: string;
@@ -54,10 +46,6 @@ function chunkText(pages: Array<{ num: number; text: string }>, chunkSize = 1000
 
 export async function POST(request: NextRequest) {
     try {
-        // Dynamically import pdf-parse to prevent ES6 import hoisting from
-        // evaluating pdfjs-dist before our global DOMMatrix polyfills are set up!
-        const { PDFParse } = await import("pdf-parse");
-
         const formData = await request.formData();
         const file = formData.get("file") as File | null;
         
@@ -69,35 +57,43 @@ export async function POST(request: NextRequest) {
         }
         
         const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
         
-        // Explicitly set the PDFJS worker path using file:// protocol to bypass
-        // Next.js Server Chunks folder resolution bugs under dev server/Turbopack in development mode.
-        if (process.env.NODE_ENV === "development") {
-            try {
-                const workerPath = path.resolve("node_modules/pdf-parse/dist/pdf-parse/esm/pdf.worker.mjs");
-                const workerUrl = pathToFileURL(workerPath).href;
-                PDFParse.setWorker(workerUrl);
-            } catch (workerErr) {
-                console.warn("⚠️ Failed to set explicit PDF worker in dev mode (falling back to native):", workerErr);
+        // Dynamically import the stable, pure-JS pdf-parse package
+        const pdfImport = await import("pdf-parse");
+        const pdfParser = (pdfImport.default || pdfImport) as any;
+        
+        const pages: Array<{ num: number; text: string }> = [];
+        const options = {
+            pagerender: (pageData: any) => {
+                return pageData.getTextContent()
+                    .then((textContent: any) => {
+                        const text = textContent.items.map((item: any) => item.str).join(" ");
+                        pages.push({
+                            num: pageData.pageIndex + 1,
+                            text: text
+                        });
+                        return text;
+                    });
             }
-        }
+        };
         
-        // Extract text from buffer using pdf-parse class (v2.4.5+)
-        const parser = new PDFParse({ data: arrayBuffer });
-        const textResult = await parser.getText();
-        const infoResult = await parser.getInfo();
+        const textResult = await pdfParser(buffer, options);
+        
+        // Ensure pages are sorted sequentially
+        pages.sort((a, b) => a.num - b.num);
         
         // Perform manual page-by-page chunking
-        const chunks = chunkText(textResult.pages, 1000, 200);
+        const chunks = chunkText(pages, 1000, 200);
         
         return NextResponse.json({
             chunks: chunks,
-            numpages: textResult.total,
+            numpages: textResult.numpages || pages.length,
             info: {
-                title: infoResult.info?.Title || file.name,
-                author: infoResult.info?.Author || "Unknown",
-                creator: infoResult.info?.Creator || "Unknown",
-                producer: infoResult.info?.Producer || "Unknown"
+                title: textResult.info?.Title || file.name,
+                author: textResult.info?.Author || "Unknown",
+                creator: textResult.info?.Creator || "Unknown",
+                producer: textResult.info?.Producer || "Unknown"
             }
         });
     } catch (error: any) {
